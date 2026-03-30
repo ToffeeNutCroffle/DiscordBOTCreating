@@ -1,8 +1,30 @@
+import os
 import calendar
 import discord
 from discord import app_commands
 from discord.ext import commands
 from database.db import DatabaseManager, now_utc, to_kst
+
+DEV_CATEGORY_NAME = os.getenv("DEV_CATEGORY_NAME", "개발실")
+
+
+def in_dev_category():
+    async def predicate(interaction: discord.Interaction) -> bool:
+        channel = interaction.channel
+        if channel is None or not hasattr(channel, "category") or channel.category is None:
+            await interaction.response.send_message(
+                f"이 명령어는 **{DEV_CATEGORY_NAME}** 카테고리 채널에서만 사용할 수 있습니다.",
+                ephemeral=True,
+            )
+            return False
+        if channel.category.name != DEV_CATEGORY_NAME:
+            await interaction.response.send_message(
+                f"이 명령어는 **{DEV_CATEGORY_NAME}** 카테고리 채널에서만 사용할 수 있습니다.",
+                ephemeral=True,
+            )
+            return False
+        return True
+    return app_commands.check(predicate)
 
 
 def secs_to_str(secs: int) -> str:
@@ -22,6 +44,7 @@ class StatsCog(commands.Cog):
 
     @app_commands.command(name="개발통계", description="개발 활동 통계를 확인합니다")
     @app_commands.describe(유저="통계를 조회할 유저 (생략 시 본인)")
+    @in_dev_category()
     async def dev_stats(self, interaction: discord.Interaction, 유저: discord.Member = None):
         target = 유저 or interaction.user
         user_id = str(target.id)
@@ -54,8 +77,7 @@ class StatsCog(commands.Cog):
         embed.add_field(name="🔥 연속 개발", value=streak_value, inline=False)
         embed.add_field(name="📅 이번 달 개발일", value=f"{monthly_days}일", inline=True)
         embed.add_field(name="⏱️ 이번 달 개발시간", value=secs_to_str(monthly_secs), inline=True)
-        if today_secs > 0:
-            embed.add_field(name="오늘 개발시간", value=secs_to_str(today_secs), inline=False)
+        embed.add_field(name="📆 오늘 개발시간", value=secs_to_str(today_secs) if today_secs > 0 else "0분", inline=True)
         embed.set_thumbnail(url=target.display_avatar.url)
 
         await interaction.response.send_message(embed=embed)
@@ -65,6 +87,7 @@ class StatsCog(commands.Cog):
         유저="조회할 유저 (생략 시 본인)",
         연월="조회할 연월 (예: 2025-03, 생략 시 이번 달)",
     )
+    @in_dev_category()
     async def dev_calendar(
         self,
         interaction: discord.Interaction,
@@ -123,6 +146,7 @@ class StatsCog(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="개발랭킹", description="이번 달 개발 시간 랭킹을 확인합니다")
+    @in_dev_category()
     async def dev_ranking(self, interaction: discord.Interaction):
         guild_id = str(interaction.guild_id)
         now_kst = to_kst(now_utc())
