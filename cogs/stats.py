@@ -177,6 +177,50 @@ class StatsCog(commands.Cog):
         embed.description = "\n".join(lines)
         await interaction.response.send_message(embed=embed)
 
+    @app_commands.command(name="사용법", description="봇 사용법을 확인합니다")
+    @in_dev_category()
+    async def usage(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title="개발 추적 봇 사용법",
+            description="개발실 음성채팅방 잔류 시간을 자동으로 기록하는 봇입니다.",
+            color=discord.Color.blurple(),
+        )
+        embed.add_field(
+            name="자동 기록",
+            value=(
+                "**개발실** 카테고리의 음성채널에 입장하면 자동으로 시간 측정이 시작됩니다.\n"
+                "퇴장 시 자동으로 기록되며, 하루 누적 **90분 이상** 시 개발일로 인정됩니다.\n"
+                "나갔다가 다시 들어와도 당일 누적 시간이 합산됩니다."
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="/개발통계 [@유저]",
+            value=(
+                "본인 또는 특정 유저의 개발 통계를 확인합니다.\n"
+                "• `@유저` 생략 시 본인 통계\n"
+                "• 연속 개발일 / 최고기록\n"
+                "• 이번 달 개발일 / 개발시간\n"
+                "• 오늘 개발시간"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="/개발달력 [@유저] [연월]",
+            value=(
+                "월별 개발 달력을 확인합니다.\n"
+                "• `연월` 예시: `2025-03` (생략 시 이번 달)"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="/개발랭킹",
+            value="이번 달 개발 시간 기준 서버 TOP 5 랭킹을 확인합니다.",
+            inline=False,
+        )
+        embed.set_footer(text="통계 명령어는 개발실 카테고리 채널에서만 사용 가능합니다.")
+        await interaction.response.send_message(embed=embed)
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(StatsCog(bot))
