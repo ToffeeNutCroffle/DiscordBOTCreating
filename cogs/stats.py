@@ -179,6 +179,8 @@ class StatsCog(commands.Cog):
         # 진행 중인 세션 시간을 랭킹에 실시간 반영
         tracker = self.bot.cogs.get("TrackerCog")
         if tracker:
+            min_dev_secs = tracker.min_dev_secs
+            today_str = now_kst.strftime("%Y-%m-%d")
             ranking_map = {e["user_id"]: e for e in ranking}
             for user_id, session_id in tracker.active_sessions.items():
                 join_time = self.db.get_session_join_time(session_id)
@@ -189,6 +191,11 @@ class StatsCog(commands.Cog):
                     ranking_map[user_id]["secs"] += elapsed
                 else:
                     ranking_map[user_id] = {"user_id": user_id, "days": 0, "secs": elapsed}
+                # 오늘이 아직 개발일로 확정되지 않았고 임계값 이상이면 days +1
+                completed_today = self.db.get_day_total_secs(user_id, guild_id, today_str)
+                total_today = completed_today + elapsed
+                if total_today >= min_dev_secs and completed_today < min_dev_secs:
+                    ranking_map[user_id]["days"] += 1
             ranking = sorted(ranking_map.values(), key=lambda e: e["secs"], reverse=True)[:5]
 
         if not ranking:
