@@ -176,8 +176,23 @@ class StatsCog(commands.Cog):
 
         ranking = self.db.get_monthly_ranking(guild_id, year_month)
 
+        # 진행 중인 세션 시간을 랭킹에 실시간 반영
+        tracker = self.bot.cogs.get("TrackerCog")
+        if tracker:
+            ranking_map = {e["user_id"]: e for e in ranking}
+            for user_id, session_id in tracker.active_sessions.items():
+                join_time = self.db.get_session_join_time(session_id)
+                if join_time is None:
+                    continue
+                elapsed = int((now_utc() - join_time).total_seconds())
+                if user_id in ranking_map:
+                    ranking_map[user_id]["secs"] += elapsed
+                else:
+                    ranking_map[user_id] = {"user_id": user_id, "days": 0, "secs": elapsed}
+            ranking = sorted(ranking_map.values(), key=lambda e: e["secs"], reverse=True)[:5]
+
         if not ranking:
-            await interaction.response.send_message("이번 달 개발 기록이 없습니다.", )
+            await interaction.response.send_message("이번 달 개발 기록이 없습니다.", ephemeral=True)
             return
 
         year, month = now_kst.year, now_kst.month
