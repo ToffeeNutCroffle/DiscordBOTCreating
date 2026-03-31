@@ -102,7 +102,7 @@ class StatsCog(commands.Cog):
         embed.add_field(name="📆 오늘 개발시간", value=secs_to_str(today_secs) if today_secs > 0 else "0분", inline=True)
         embed.set_thumbnail(url=target.display_avatar.url)
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=embed, )
 
     @app_commands.command(name="개발달력", description="월별 개발 달력을 확인합니다")
     @app_commands.describe(
@@ -165,7 +165,7 @@ class StatsCog(commands.Cog):
         )
         embed.set_footer(text=f"총 {total_days}일 개발")
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=embed, )
 
     @app_commands.command(name="개발랭킹", description="이번 달 개발 시간 랭킹을 확인합니다")
     @in_dev_category()
@@ -177,7 +177,7 @@ class StatsCog(commands.Cog):
         ranking = self.db.get_monthly_ranking(guild_id, year_month)
 
         if not ranking:
-            await interaction.response.send_message("이번 달 개발 기록이 없습니다.", ephemeral=True)
+            await interaction.response.send_message("이번 달 개발 기록이 없습니다.", )
             return
 
         year, month = now_kst.year, now_kst.month
@@ -197,7 +197,7 @@ class StatsCog(commands.Cog):
             )
 
         embed.description = "\n".join(lines)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=embed, )
 
     @app_commands.command(name="사용법", description="봇 사용법을 확인합니다")
     @in_dev_category()
@@ -241,7 +241,7 @@ class StatsCog(commands.Cog):
             inline=False,
         )
         embed.set_footer(text="통계 명령어는 개발실 카테고리 채널에서만 사용 가능합니다.")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=embed, )
 
 
 async def setup(bot: commands.Bot):
