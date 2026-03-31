@@ -239,14 +239,16 @@ class DatabaseManager:
             cur = self._conn.cursor()
             cur.execute(
                 """
-                SELECT user_id, COUNT(*) as days, SUM(total_secs) as secs
-                FROM dev_days
-                WHERE guild_id = ? AND date LIKE ?
+                SELECT user_id, COUNT(DISTINCT date(datetime(join_time, '+9 hours'))) as days,
+                       SUM(duration) as secs
+                FROM sessions
+                WHERE guild_id = ? AND duration IS NOT NULL
+                  AND strftime('%Y-%m', datetime(join_time, '+9 hours')) = ?
                 GROUP BY user_id
                 ORDER BY secs DESC
                 LIMIT 5
                 """,
-                (guild_id, f"{year_month}-%"),
+                (guild_id, year_month),
             )
             return [{"user_id": r[0], "days": r[1], "secs": r[2]} for r in cur.fetchall()]
 
