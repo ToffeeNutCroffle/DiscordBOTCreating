@@ -233,22 +233,29 @@ class DatabaseManager:
             )
             return [r[0] for r in cur.fetchall()]
 
-    def get_monthly_ranking(self, guild_id: str, year_month: str) -> list[dict]:
-        """이번 달 개발 시간 기준 서버 랭킹."""
+    def get_monthly_ranking(self, guild_id: str, year_month: str, min_dev_secs: int) -> list[dict]:
+        """이번 달 개발 시간 기준 서버 랭킹. 하루 누적 min_dev_secs 이상인 날만 개발일로 집계."""
         with self._lock:
             cur = self._conn.cursor()
             cur.execute(
                 """
-                SELECT user_id, COUNT(DISTINCT date(datetime(join_time, '+9 hours'))) as days,
-                       SUM(duration) as secs
-                FROM sessions
-                WHERE guild_id = ? AND duration IS NOT NULL
-                  AND strftime('%Y-%m', datetime(join_time, '+9 hours')) = ?
+                SELECT user_id,
+                       SUM(CASE WHEN day_total >= ? THEN 1 ELSE 0 END) AS days,
+                       SUM(day_total) AS secs
+                FROM (
+                    SELECT user_id,
+                           date(datetime(join_time, '+9 hours')) AS day_date,
+                           SUM(duration) AS day_total
+                    FROM sessions
+                    WHERE guild_id = ? AND duration IS NOT NULL
+                      AND strftime('%Y-%m', datetime(join_time, '+9 hours')) = ?
+                    GROUP BY user_id, day_date
+                )
                 GROUP BY user_id
                 ORDER BY secs DESC
                 LIMIT 5
                 """,
-                (guild_id, year_month),
+                (min_dev_secs, guild_id, year_month),
             )
             return [{"user_id": r[0], "days": r[1], "secs": r[2]} for r in cur.fetchall()]
 

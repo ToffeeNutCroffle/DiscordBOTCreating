@@ -174,10 +174,12 @@ class StatsCog(commands.Cog):
         now_kst = to_kst(now_utc())
         year_month = now_kst.strftime("%Y-%m")
 
-        ranking = self.db.get_monthly_ranking(guild_id, year_month)
+        tracker = self.bot.cogs.get("TrackerCog")
+        min_dev_secs = tracker.min_dev_secs if tracker else int(os.getenv("MIN_DEV_SECONDS", "5400"))
+
+        ranking = self.db.get_monthly_ranking(guild_id, year_month, min_dev_secs)
 
         # 진행 중인 세션 시간을 랭킹에 실시간 반영
-        tracker = self.bot.cogs.get("TrackerCog")
         if tracker:
             min_dev_secs = tracker.min_dev_secs
             today_str = now_kst.strftime("%Y-%m-%d")
