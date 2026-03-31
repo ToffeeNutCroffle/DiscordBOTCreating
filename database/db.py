@@ -96,6 +96,14 @@ class DatabaseManager:
             rows = cur.fetchall()
         return [{"session_id": r[0], "user_id": r[1], "join_time": parse_utc(r[2])} for r in rows]
 
+    def get_session_join_time(self, session_id: int):
+        """진행 중인 세션의 join_time 반환."""
+        with self._lock:
+            cur = self._conn.cursor()
+            cur.execute("SELECT join_time FROM sessions WHERE id = ?", (session_id,))
+            row = cur.fetchone()
+            return parse_utc(row[0]) if row else None
+
     def get_day_total_secs(self, user_id: str, guild_id: str, date_kst: str) -> int:
         """특정 날짜(KST, YYYY-MM-DD)의 세션 duration 합계(초)."""
         with self._lock:
@@ -204,9 +212,14 @@ class DatabaseManager:
         with self._lock:
             cur = self._conn.cursor()
             cur.execute(
-                "SELECT COALESCE(SUM(total_secs), 0) FROM dev_days "
-                "WHERE user_id = ? AND guild_id = ? AND date LIKE ?",
-                (user_id, guild_id, f"{year_month}-%"),
+                """
+                SELECT COALESCE(SUM(duration), 0)
+                FROM sessions
+                WHERE user_id = ? AND guild_id = ?
+                  AND duration IS NOT NULL
+                  AND strftime('%Y-%m', datetime(join_time, '+9 hours')) = ?
+                """,
+                (user_id, guild_id, year_month),
             )
             return cur.fetchone()[0]
 

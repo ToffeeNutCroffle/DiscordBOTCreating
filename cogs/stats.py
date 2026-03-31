@@ -58,11 +58,24 @@ class StatsCog(commands.Cog):
         tracker = self.bot.cogs.get("TrackerCog")
         is_active = tracker is not None and user_id in tracker.active_sessions
 
-        consecutive = self.db.get_consecutive_days(user_id, guild_id, today_str, include_today=is_active)
+        # 오늘 누적 시간 (완료된 세션 합계)
+        today_secs = self.db.get_day_total_secs(user_id, guild_id, today_str)
+
+        # 진행 중인 세션 시간도 합산
+        if is_active:
+            session_id = tracker.active_sessions[user_id]
+            join_time = self.db.get_session_join_time(session_id)
+            if join_time is not None:
+                today_secs += int((now_utc() - join_time).total_seconds())
+
+        # 오늘 누적 시간이 임계값 이상일 때만 연속일에 포함
+        min_dev_secs = tracker.min_dev_secs if tracker else int(os.getenv("MIN_DEV_SECONDS", "5400"))
+        include_today = today_secs >= min_dev_secs
+
+        consecutive = self.db.get_consecutive_days(user_id, guild_id, today_str, include_today=include_today)
         max_streak = self.db.get_max_streak(user_id, guild_id)
         monthly_days = self.db.get_monthly_days(user_id, guild_id, year_month)
         monthly_secs = self.db.get_monthly_secs(user_id, guild_id, year_month)
-        today_secs = self.db.get_day_total_secs(user_id, guild_id, today_str)
 
         # 현재 연속일이 최대 기록이면 갱신 중 표시
         if consecutive > 0 and consecutive >= max_streak:
