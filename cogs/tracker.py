@@ -75,9 +75,16 @@ class TrackerCog(commands.Cog):
         if session_id is None:
             return
 
+        join_time = self.db.get_session_join_time(session_id)
         leave_time = now_utc()
         self.db.close_session(session_id, leave_time)
-        self._try_confirm_dev_day(user_id, guild_id, leave_time)
+
+        ref = join_time if join_time else leave_time
+        self._try_confirm_dev_day(user_id, guild_id, ref)
+
+        # 자정을 넘긴 세션이면 leave_time 날짜도 별도로 체크
+        if join_time and to_kst(join_time).date() < to_kst(leave_time).date():
+            self._try_confirm_dev_day(user_id, guild_id, leave_time)
 
     def _try_confirm_dev_day(self, user_id: str, guild_id: str, reference_time):
         """해당 날짜(KST) 누적 시간이 임계값 이상이면 개발일로 확정."""

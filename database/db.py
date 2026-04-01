@@ -105,21 +105,32 @@ class DatabaseManager:
             return parse_utc(row[0]) if row else None
 
     def get_day_total_secs(self, user_id: str, guild_id: str, date_kst: str) -> int:
-        """특정 날짜(KST, YYYY-MM-DD)의 세션 duration 합계(초)."""
+        """특정 날짜(KST, YYYY-MM-DD)에 실제로 체류한 시간(초). 자정을 넘기는 세션도 날짜별로 분리 계산."""
+        day_start = datetime.strptime(date_kst, "%Y-%m-%d").replace(tzinfo=KST)
+        day_end = day_start + timedelta(days=1)
+
         with self._lock:
             cur = self._conn.cursor()
-            # join_time을 KST로 변환하여 날짜 비교
             cur.execute(
                 """
-                SELECT COALESCE(SUM(duration), 0)
+                SELECT join_time, leave_time
                 FROM sessions
                 WHERE user_id = ? AND guild_id = ?
                   AND duration IS NOT NULL
-                  AND date(datetime(join_time, '+9 hours')) = ?
+                  AND join_time < ? AND leave_time >= ?
                 """,
-                (user_id, guild_id, date_kst),
+                (user_id, guild_id, utc_str(day_end), utc_str(day_start)),
             )
-            return cur.fetchone()[0]
+            rows = cur.fetchall()
+
+        total = 0
+        for row in rows:
+            join = parse_utc(row[0])
+            leave = parse_utc(row[1])
+            effective_start = max(join, day_start)
+            effective_end = min(leave, day_end)
+            total += int((effective_end - effective_start).total_seconds())
+        return total
 
     # ── 개발일 관련 ────────────────────────────────────────
 
