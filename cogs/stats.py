@@ -54,39 +54,17 @@ class StatsCog(commands.Cog):
         today_str = now_kst.strftime("%Y-%m-%d")
         year_month = now_kst.strftime("%Y-%m")
 
-        # 현재 개발실에 체류 중인지 확인
+        today_secs = self.db.get_day_total_secs(user_id, guild_id, today_str)
+        monthly_days = self.db.get_monthly_days(user_id, guild_id, year_month)
+        monthly_secs = self.db.get_monthly_secs(user_id, guild_id, year_month)
+
         tracker = self.bot.cogs.get("TrackerCog")
-        is_active = tracker is not None and user_id in tracker.active_sessions
-
-        # 오늘 완료된 세션 합계
-        completed_today = self.db.get_day_total_secs(user_id, guild_id, today_str)
-
-        # 진행 중인 세션 경과 시간
-        active_elapsed = 0
-        if is_active:
-            session_id = tracker.active_sessions[user_id]
-            join_time = self.db.get_session_join_time(session_id)
-            if join_time is not None:
-                active_elapsed = int((now_utc() - join_time).total_seconds())
-
-        today_secs = completed_today + active_elapsed
-
-        # 오늘 누적 시간이 임계값 이상일 때만 연속일/개발일에 포함
         min_dev_secs = tracker.min_dev_secs if tracker else int(os.getenv("MIN_DEV_SECONDS", "5400"))
         include_today = today_secs >= min_dev_secs
 
         consecutive = self.db.get_consecutive_days(user_id, guild_id, today_str, include_today=include_today)
         max_streak = self.db.get_max_streak(user_id, guild_id)
-        monthly_days = self.db.get_monthly_days(user_id, guild_id, year_month)
-        monthly_secs = self.db.get_monthly_secs(user_id, guild_id, year_month)
 
-        # 진행 중인 세션을 이번달 통계에 실시간 반영
-        monthly_secs += active_elapsed
-        # 오늘이 아직 dev_days에 없고 임계값 이상이면 개발일 +1
-        if include_today and completed_today < min_dev_secs:
-            monthly_days += 1
-
-        # 현재 연속일이 최대 기록이면 갱신 중 표시
         if consecutive > 0 and consecutive >= max_streak:
             streak_value = f"{consecutive}일 🏆 최고기록 갱신 중!"
         else:
@@ -137,20 +115,28 @@ class StatsCog(commands.Cog):
 
         dev_dates = set(self.db.get_monthly_dev_dates(user_id, guild_id, year_month))
         _, days_in_month = calendar.monthrange(year, month)
-        first_weekday = calendar.monthrange(year, month)[0]  # 0=월요일
+        first_weekday = (calendar.monthrange(year, month)[0] + 1) % 7  # 0=일요일
 
         # 달력 렌더링
-        header = "월  화  수  목  금  토  일\n"
+        RED   = "\u001b[31m"
+        BLUE  = "\u001b[34m"
+        RESET = "\u001b[0m"
+
+        header = f"{RED}일{RESET}    월   화    수   목    금   {BLUE}토{RESET}\n"
         lines = [header]
-        row = "    " * first_weekday
+        row = "     " * first_weekday
         for day in range(1, days_in_month + 1):
             date_str = f"{year_month}-{day:02d}"
-            if date_str in dev_dates:
-                cell = "✅ "
-            else:
-                cell = f"{day:2d}  "
-            row += cell
             weekday = (first_weekday + day - 1) % 7
+            if date_str in dev_dates:
+                cell = f" ✓   "
+            elif weekday == 0:
+                cell = f"{RED}{day:2d}{RESET}   "
+            elif weekday == 6:
+                cell = f"{BLUE}{day:2d}{RESET}   "
+            else:
+                cell = f"{day:2d}   "
+            row += cell
             if weekday == 6:
                 lines.append(row)
                 row = ""
@@ -160,7 +146,7 @@ class StatsCog(commands.Cog):
         total_days = len(dev_dates)
         embed = discord.Embed(
             title=f"{target.display_name}의 {year}년 {month}월 개발 달력",
-            description="```\n" + "\n".join(lines) + "\n```",
+            description="```ansi\n" + "\n".join(lines) + "\n```",
             color=discord.Color.green(),
         )
         embed.set_footer(text=f"총 {total_days}일 개발")
@@ -179,27 +165,6 @@ class StatsCog(commands.Cog):
 
         ranking = self.db.get_monthly_ranking(guild_id, year_month, min_dev_secs)
 
-        # 진행 중인 세션 시간을 랭킹에 실시간 반영
-        if tracker:
-            min_dev_secs = tracker.min_dev_secs
-            today_str = now_kst.strftime("%Y-%m-%d")
-            ranking_map = {e["user_id"]: e for e in ranking}
-            for user_id, session_id in tracker.active_sessions.items():
-                join_time = self.db.get_session_join_time(session_id)
-                if join_time is None:
-                    continue
-                elapsed = int((now_utc() - join_time).total_seconds())
-                if user_id in ranking_map:
-                    ranking_map[user_id]["secs"] += elapsed
-                else:
-                    ranking_map[user_id] = {"user_id": user_id, "days": 0, "secs": elapsed}
-                # 오늘이 아직 개발일로 확정되지 않았고 임계값 이상이면 days +1
-                completed_today = self.db.get_day_total_secs(user_id, guild_id, today_str)
-                total_today = completed_today + elapsed
-                if total_today >= min_dev_secs and completed_today < min_dev_secs:
-                    ranking_map[user_id]["days"] += 1
-            ranking = sorted(ranking_map.values(), key=lambda e: e["secs"], reverse=True)[:5]
-
         if not ranking:
             await interaction.response.send_message("이번 달 개발 기록이 없습니다.", ephemeral=True)
             return
@@ -217,7 +182,7 @@ class StatsCog(commands.Cog):
             name = member.display_name if member else f"(알 수 없음)"
             prefix = medals[i] if i < 3 else f"{i+1}위"
             lines.append(
-                f"{prefix} **{name}** — {entry['days']}일 / {secs_to_str(entry['secs'])}"
+                f"{prefix} **{name}** — {secs_to_str(entry['secs'])} / {entry['days']}일"
             )
 
         embed.description = "\n".join(lines)
