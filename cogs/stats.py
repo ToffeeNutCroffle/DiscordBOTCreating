@@ -119,6 +119,7 @@ class StatsCog(commands.Cog):
 
         # 달력 렌더링
         RED   = "\u001b[31m"
+        GREEN = "\u001b[32m"
         BLUE  = "\u001b[34m"
         RESET = "\u001b[0m"
 
@@ -129,7 +130,7 @@ class StatsCog(commands.Cog):
             date_str = f"{year_month}-{day:02d}"
             weekday = (first_weekday + day - 1) % 7
             if date_str in dev_dates:
-                cell = f" ✓   "
+                cell = f"{GREEN} ✓  {RESET} "
             elif weekday == 0:
                 cell = f"{RED}{day:2d}{RESET}   "
             elif weekday == 6:
