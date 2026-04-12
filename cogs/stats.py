@@ -1,9 +1,10 @@
 import os
 import calendar
 import discord
+from datetime import timezone, timedelta
 from discord import app_commands
 from discord.ext import commands
-from database.db import DatabaseManager, now_utc, to_kst
+from database.db import DatabaseManager, now_utc, to_kst, to_dev_date, dev_day_start_utc
 
 DEV_CATEGORY_NAME = os.getenv("DEV_CATEGORY_NAME", "개발실")
 
@@ -42,6 +43,21 @@ class StatsCog(commands.Cog):
         self.bot = bot
         self.db: DatabaseManager = bot.db
 
+    def _live_session_secs(self, user_id: str, now_kst) -> tuple[int, int]:
+        """진행 중 세션의 오늘/이번달 기여 시간(초) 반환. (today_live, month_live)"""
+        tracker = self.bot.cogs.get("TrackerCog")
+        if not tracker or user_id not in tracker.active_sessions:
+            return 0, 0
+        session_id = tracker.active_sessions[user_id]
+        join_time = self.db.get_session_join_time(session_id)
+        if not join_time:
+            return 0, 0
+        now = now_utc()
+        day_start = dev_day_start_utc(now)
+        today_live = max(0, int((now - max(join_time, day_start)).total_seconds()))
+        month_live = max(0, int((now - join_time).total_seconds()))
+        return today_live, month_live
+
     @app_commands.command(name="개발통계", description="개발 활동 통계를 확인합니다")
     @app_commands.describe(유저="통계를 조회할 유저 (생략 시 본인)")
     @in_dev_category()
@@ -51,12 +67,13 @@ class StatsCog(commands.Cog):
         guild_id = str(interaction.guild_id)
 
         now_kst = to_kst(now_utc())
-        today_str = now_kst.strftime("%Y-%m-%d")
-        year_month = now_kst.strftime("%Y-%m")
+        today_str = to_dev_date(now_utc())
+        year_month = today_str[:7]
 
-        today_secs = self.db.get_day_total_secs(user_id, guild_id, today_str)
+        today_live, month_live = self._live_session_secs(user_id, now_kst)
+        today_secs = self.db.get_day_total_secs(user_id, guild_id, today_str) + today_live
         monthly_days = self.db.get_monthly_days(user_id, guild_id, year_month)
-        monthly_secs = self.db.get_monthly_secs(user_id, guild_id, year_month)
+        monthly_secs = self.db.get_monthly_secs(user_id, guild_id, year_month) + month_live
 
         tracker = self.bot.cogs.get("TrackerCog")
         min_dev_secs = tracker.min_dev_secs if tracker else int(os.getenv("MIN_DEV_SECONDS", "5400"))
@@ -114,6 +131,18 @@ class StatsCog(commands.Cog):
             return
 
         dev_dates = set(self.db.get_monthly_dev_dates(user_id, guild_id, year_month))
+
+        # 이번 달 조회 시 진행 중 세션 반영
+        current_dev_date = to_dev_date(now_utc())
+        if year_month == current_dev_date[:7]:
+            tracker = self.bot.cogs.get("TrackerCog")
+            min_dev_secs = tracker.min_dev_secs if tracker else int(os.getenv("MIN_DEV_SECONDS", "5400"))
+            today_str_cal = current_dev_date
+            today_live, _ = self._live_session_secs(user_id, now_kst)
+            today_total = self.db.get_day_total_secs(user_id, guild_id, today_str_cal) + today_live
+            if today_total >= min_dev_secs and today_str_cal not in dev_dates:
+                dev_dates.add(today_str_cal)
+
         _, days_in_month = calendar.monthrange(year, month)
         first_weekday = (calendar.monthrange(year, month)[0] + 1) % 7  # 0=일요일
 
@@ -159,18 +188,58 @@ class StatsCog(commands.Cog):
     async def dev_ranking(self, interaction: discord.Interaction):
         guild_id = str(interaction.guild_id)
         now_kst = to_kst(now_utc())
-        year_month = now_kst.strftime("%Y-%m")
+        year_month = to_dev_date(now_utc())[:7]
 
         tracker = self.bot.cogs.get("TrackerCog")
         min_dev_secs = tracker.min_dev_secs if tracker else int(os.getenv("MIN_DEV_SECONDS", "5400"))
 
         ranking = self.db.get_monthly_ranking(guild_id, year_month, min_dev_secs)
 
+        # 진행 중 세션 반영
+        if tracker and tracker.active_sessions:
+            now = now_utc()
+            today_str_rank = to_dev_date(now)
+            day_start_utc = dev_day_start_utc(now)
+            rank_dict = {entry["user_id"]: dict(entry) for entry in ranking}
+
+            active_uids = list(tracker.active_sessions.keys())
+            active_sids = list(tracker.active_sessions.values())
+
+            join_times = self.db.get_session_join_times_batch(active_sids)
+            day_totals = self.db.get_day_total_secs_batch(active_uids, guild_id, today_str_rank)
+            dev_dates_map = self.db.get_monthly_dev_dates_batch(active_uids, guild_id, year_month)
+            new_uids = [uid for uid in active_uids if uid not in rank_dict]
+            monthly_stats = self.db.get_monthly_stats_batch(new_uids, guild_id, year_month)
+
+            for uid, session_id in tracker.active_sessions.items():
+                join_time = join_times.get(session_id)
+                if not join_time:
+                    continue
+                if to_dev_date(join_time)[:7] != year_month:
+                    continue
+                month_live = max(0, int((now - join_time).total_seconds()))
+                today_live = max(0, int((now - max(join_time, day_start_utc)).total_seconds()))
+                today_total = day_totals.get(uid, 0) + today_live
+                today_already = today_str_rank in dev_dates_map.get(uid, set())
+
+                if uid in rank_dict:
+                    rank_dict[uid]["secs"] += month_live
+                    if not today_already and today_total >= min_dev_secs:
+                        rank_dict[uid]["days"] += 1
+                else:
+                    stats = monthly_stats.get(uid, {"days": 0, "secs": 0})
+                    days = stats["days"]
+                    if not today_already and today_total >= min_dev_secs:
+                        days += 1
+                    rank_dict[uid] = {"user_id": uid, "secs": stats["secs"] + month_live, "days": days}
+
+            ranking = sorted(rank_dict.values(), key=lambda x: x["secs"], reverse=True)[:5]
+
         if not ranking:
             await interaction.response.send_message("이번 달 개발 기록이 없습니다.", ephemeral=True)
             return
 
-        year, month = now_kst.year, now_kst.month
+        year, month = map(int, year_month.split("-"))
         embed = discord.Embed(
             title=f"{year}년 {month}월 개발 랭킹",
             color=discord.Color.gold(),

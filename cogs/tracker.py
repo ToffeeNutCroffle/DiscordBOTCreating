@@ -1,7 +1,7 @@
 import os
 import discord
 from discord.ext import commands
-from database.db import DatabaseManager, now_utc, to_kst
+from database.db import DatabaseManager, now_utc, to_kst, to_dev_date
 
 
 class TrackerCog(commands.Cog):
@@ -82,13 +82,13 @@ class TrackerCog(commands.Cog):
         ref = join_time if join_time else leave_time
         self._try_confirm_dev_day(user_id, guild_id, ref)
 
-        # 자정을 넘긴 세션이면 leave_time 날짜도 별도로 체크
-        if join_time and to_kst(join_time).date() < to_kst(leave_time).date():
+        # 개발일 기준 날짜가 바뀐 세션이면 leave_time 날짜도 별도로 체크
+        if join_time and to_dev_date(join_time) != to_dev_date(leave_time):
             self._try_confirm_dev_day(user_id, guild_id, leave_time)
 
     def _try_confirm_dev_day(self, user_id: str, guild_id: str, reference_time):
-        """해당 날짜(KST) 누적 시간이 임계값 이상이면 개발일로 확정."""
-        date_kst = to_kst(reference_time).strftime("%Y-%m-%d")
+        """해당 개발일 누적 시간이 임계값 이상이면 개발일로 확정."""
+        date_kst = to_dev_date(reference_time)
         total_secs = self.db.get_day_total_secs(user_id, guild_id, date_kst)
         if total_secs >= self.min_dev_secs:
             self.db.upsert_dev_day(user_id, guild_id, date_kst, total_secs)
