@@ -79,6 +79,12 @@ class StatsCog(commands.Cog):
         min_dev_secs = tracker.min_dev_secs if tracker else int(os.getenv("MIN_DEV_SECONDS", "5400"))
         include_today = today_secs >= min_dev_secs
 
+        # 진행 중 세션으로 오늘이 개발일 조건 충족 시, 아직 확정되지 않은 경우 개발일 수에 반영
+        if include_today:
+            monthly_dev_dates = set(self.db.get_monthly_dev_dates(user_id, guild_id, year_month))
+            if today_str not in monthly_dev_dates:
+                monthly_days += 1
+
         consecutive = self.db.get_consecutive_days(user_id, guild_id, today_str, include_today=include_today)
         max_streak = self.db.get_max_streak(user_id, guild_id)
 
