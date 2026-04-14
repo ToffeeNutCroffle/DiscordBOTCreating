@@ -381,7 +381,6 @@ class DatabaseManager:
                 )
                 GROUP BY user_id
                 ORDER BY secs DESC
-                LIMIT 5
                 """,
                 (min_dev_secs, guild_id, utc_str(month_start), utc_str(month_end)),
             )

@@ -239,11 +239,14 @@ class StatsCog(commands.Cog):
                         days += 1
                     rank_dict[uid] = {"user_id": uid, "secs": stats["secs"] + month_live, "days": days}
 
-            ranking = sorted(rank_dict.values(), key=lambda x: x["secs"], reverse=True)[:5]
+            ranking = list(rank_dict.values())
 
         if not ranking:
             await interaction.response.send_message("이번 달 개발 기록이 없습니다.", ephemeral=True)
             return
+
+        ranking_by_secs = sorted(ranking, key=lambda x: x["secs"], reverse=True)[:5]
+        ranking_by_days = sorted(ranking, key=lambda x: (x["days"], x["secs"]), reverse=True)[:5]
 
         year, month = map(int, year_month.split("-"))
         embed = discord.Embed(
@@ -252,17 +255,24 @@ class StatsCog(commands.Cog):
         )
 
         medals = ["🥇", "🥈", "🥉"]
-        lines = []
-        for i, entry in enumerate(ranking):
-            member = interaction.guild.get_member(int(entry["user_id"]))
-            name = member.display_name if member else f"(알 수 없음)"
-            prefix = medals[i] if i < 3 else f"{i+1}위"
-            lines.append(
-                f"{prefix} **{name}** — {secs_to_str(entry['secs'])} / {entry['days']}일"
-            )
 
-        embed.description = "\n".join(lines)
-        await interaction.response.send_message(embed=embed, )
+        secs_lines = []
+        for i, entry in enumerate(ranking_by_secs):
+            member = interaction.guild.get_member(int(entry["user_id"]))
+            name = member.display_name if member else "(알 수 없음)"
+            prefix = medals[i] if i < 3 else f"{i+1}위"
+            secs_lines.append(f"{prefix} **{name}** — {secs_to_str(entry['secs'])} / {entry['days']}일")
+
+        days_lines = []
+        for i, entry in enumerate(ranking_by_days):
+            member = interaction.guild.get_member(int(entry["user_id"]))
+            name = member.display_name if member else "(알 수 없음)"
+            prefix = medals[i] if i < 3 else f"{i+1}위"
+            days_lines.append(f"{prefix} **{name}** — {entry['days']}일 / {secs_to_str(entry['secs'])}")
+
+        embed.add_field(name="⏱️ 시간 랭킹", value="\n".join(secs_lines), inline=True)
+        embed.add_field(name="📅 일수 랭킹", value="\n".join(days_lines), inline=True)
+        await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="사용법", description="봇 사용법을 확인합니다")
     @in_dev_category()
