@@ -285,8 +285,8 @@ class StatsCog(commands.Cog):
         embed.add_field(
             name="자동 기록",
             value=(
-                "**개발실** 카테고리의 음성채널에 입장하면 자동으로 시간 측정이 시작됩니다.\n"
-                "퇴장 시 자동으로 기록되며, 하루 누적 **90분 이상** 시 개발일로 인정됩니다.\n"
+                "개발실 카테고리의 음성채널에 입장하면 자동으로 시간 측정이 시작됩니다.\n"
+                "퇴장 시 누적 시간이 자동으로 집계되며, 하루 누적 90분 이상 시 개발일로 인정됩니다.\n"
                 "나갔다가 다시 들어와도 당일 누적 시간이 합산됩니다."
             ),
             inline=False,
@@ -306,16 +306,25 @@ class StatsCog(commands.Cog):
             name="/개발달력 [@유저] [연월]",
             value=(
                 "월별 개발 달력을 확인합니다.\n"
+                "• `@유저` 생략 시 본인 달력\n"
                 "• `연월` 예시: `2025-03` (생략 시 이번 달)"
             ),
             inline=False,
         )
         embed.add_field(
             name="/개발랭킹",
-            value="이번 달 개발 시간 기준 서버 TOP 5 랭킹을 확인합니다.",
+            value=(
+                "이번 달 서버 TOP 5 랭킹을 확인합니다.\n"
+                "• 시간 랭킹: 이번 달 총 개발 시간 기준\n"
+                "• 일수 랭킹: 이번 달 개발일 수 기준"
+            ),
             inline=False,
         )
-        embed.set_footer(text="통계 명령어는 개발실 카테고리 채널에서만 사용 가능합니다.")
+        dev_contact = os.getenv("DEV_CONTACT", "")
+        footer = "통계 명령어는 개발실 카테고리 채널에서만 사용 가능합니다."
+        if dev_contact:
+            footer += f"\n| 개발자: {dev_contact}"
+        embed.set_footer(text=footer)
         await interaction.response.send_message(embed=embed, )
 
 
