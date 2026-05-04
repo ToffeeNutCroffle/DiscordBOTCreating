@@ -36,7 +36,7 @@ def dev_day_start_utc(dt: datetime) -> datetime:
     return day_start_kst.astimezone(timezone.utc)
 
 
-def _month_utc_range(year_month: str) -> tuple[datetime, datetime]:
+def month_utc_range(year_month: str) -> tuple[datetime, datetime]:
     """해당 월의 시작/끝 UTC 시각 반환 (개발일 기준, DAY_RESET_HOUR 적용)."""
     year, month = map(int, year_month.split("-"))
     start_kst = datetime(year, month, 1, DAY_RESET_HOUR, 0, 0, tzinfo=KST)
@@ -290,20 +290,28 @@ class DatabaseManager:
 
     def get_monthly_secs(self, user_id: str, guild_id: str, year_month: str) -> int:
         """해당 월(YYYY-MM)의 총 개발 시간(초)."""
-        month_start, month_end = _month_utc_range(year_month)
+        month_start, month_end = month_utc_range(year_month)
         with self._lock:
             cur = self._conn.cursor()
             cur.execute(
                 """
-                SELECT COALESCE(SUM(duration), 0)
+                SELECT join_time, leave_time
                 FROM sessions
                 WHERE user_id = ? AND guild_id = ?
                   AND duration IS NOT NULL
-                  AND join_time >= ? AND join_time < ?
+                  AND join_time < ? AND leave_time >= ?
                 """,
-                (user_id, guild_id, utc_str(month_start), utc_str(month_end)),
+                (user_id, guild_id, utc_str(month_end), utc_str(month_start)),
             )
-            return cur.fetchone()[0]
+            rows = cur.fetchall()
+        total = 0
+        for row in rows:
+            join = parse_utc(row[0])
+            leave = parse_utc(row[1])
+            effective_start = max(join, month_start)
+            effective_end = min(leave, month_end)
+            total += int((effective_end - effective_start).total_seconds())
+        return total
 
     def get_monthly_dev_dates(self, user_id: str, guild_id: str, year_month: str) -> list[str]:
         """해당 월의 개발일 날짜 목록(YYYY-MM-DD)."""
@@ -337,7 +345,7 @@ class DatabaseManager:
         if not user_ids:
             return {}
         placeholders = ",".join("?" * len(user_ids))
-        month_start, month_end = _month_utc_range(year_month)
+        month_start, month_end = month_utc_range(year_month)
         with self._lock:
             cur = self._conn.cursor()
             cur.execute(
@@ -347,21 +355,26 @@ class DatabaseManager:
             days_map = {r[0]: r[1] for r in cur.fetchall()}
             cur.execute(
                 f"""
-                SELECT user_id, COALESCE(SUM(duration), 0)
+                SELECT user_id, join_time, leave_time
                 FROM sessions
                 WHERE guild_id = ? AND user_id IN ({placeholders})
                   AND duration IS NOT NULL
-                  AND join_time >= ? AND join_time < ?
-                GROUP BY user_id
+                  AND join_time < ? AND leave_time >= ?
                 """,
-                (guild_id, *user_ids, utc_str(month_start), utc_str(month_end)),
+                (guild_id, *user_ids, utc_str(month_end), utc_str(month_start)),
             )
-            secs_map = {r[0]: r[1] for r in cur.fetchall()}
+            secs_map: dict[str, int] = {}
+            for uid, jt, lt in cur.fetchall():
+                join = parse_utc(jt)
+                leave = parse_utc(lt)
+                effective_start = max(join, month_start)
+                effective_end = min(leave, month_end)
+                secs_map[uid] = secs_map.get(uid, 0) + int((effective_end - effective_start).total_seconds())
         return {uid: {"days": days_map.get(uid, 0), "secs": secs_map.get(uid, 0)} for uid in user_ids}
 
     def get_monthly_ranking(self, guild_id: str, year_month: str, min_dev_secs: int) -> list[dict]:
         """이번 달 개발 시간 기준 서버 랭킹. 하루 누적 min_dev_secs 이상인 날만 개발일로 집계."""
-        month_start, month_end = _month_utc_range(year_month)
+        month_start, month_end = month_utc_range(year_month)
         offset = 9 - DAY_RESET_HOUR
         with self._lock:
             cur = self._conn.cursor()
@@ -385,6 +398,78 @@ class DatabaseManager:
                 (min_dev_secs, guild_id, utc_str(month_start), utc_str(month_end)),
             )
             return [{"user_id": r[0], "days": r[1], "secs": r[2]} for r in cur.fetchall()]
+
+    def deduct_today_secs(self, user_id: str, guild_id: str, date_kst: str, deduct_secs: int) -> int:
+        """오늘 개발 시간에서 지정한 시간(초)을 차감. 실제 차감된 시간(초) 반환."""
+        day_start = datetime.strptime(date_kst, "%Y-%m-%d").replace(tzinfo=KST) + timedelta(hours=DAY_RESET_HOUR)
+        day_end = day_start + timedelta(days=1)
+
+        with self._lock:
+            cur = self._conn.cursor()
+            cur.execute(
+                """
+                SELECT id, join_time, leave_time
+                FROM sessions
+                WHERE user_id = ? AND guild_id = ?
+                  AND duration IS NOT NULL
+                  AND join_time < ? AND leave_time >= ?
+                ORDER BY leave_time DESC
+                """,
+                (user_id, guild_id, utc_str(day_end), utc_str(day_start)),
+            )
+            rows = cur.fetchall()
+
+        sessions = []
+        total_today = 0
+        for sid, jt, lt in rows:
+            join = parse_utc(jt)
+            leave = parse_utc(lt)
+            eff_start = max(join, day_start)
+            eff_end = min(leave, day_end)
+            eff_secs = int((eff_end - eff_start).total_seconds())
+            sessions.append((sid, join, leave, eff_secs))
+            total_today += eff_secs
+
+        actual_deduct = min(deduct_secs, total_today)
+        remaining = actual_deduct
+
+        with self._lock:
+            cur = self._conn.cursor()
+            for sid, join, leave, eff_secs in sessions:
+                if remaining <= 0:
+                    break
+                if eff_secs <= remaining:
+                    remaining -= eff_secs
+                    if join >= day_start:
+                        cur.execute("DELETE FROM sessions WHERE id = ?", (sid,))
+                    else:
+                        # 어제부터 이어진 세션 — 어제 부분만 남김
+                        new_dur = int((day_start - join).total_seconds())
+                        cur.execute(
+                            "UPDATE sessions SET leave_time = ?, duration = ? WHERE id = ?",
+                            (utc_str(day_start), new_dur, sid),
+                        )
+                else:
+                    new_leave = leave - timedelta(seconds=remaining)
+                    new_dur = int((new_leave - join).total_seconds())
+                    cur.execute(
+                        "UPDATE sessions SET leave_time = ?, duration = ? WHERE id = ?",
+                        (utc_str(new_leave), new_dur, sid),
+                    )
+                    remaining = 0
+            self._conn.commit()
+
+        return actual_deduct
+
+    def delete_dev_day(self, user_id: str, guild_id: str, date_kst: str):
+        """개발일 기록 삭제."""
+        with self._lock:
+            cur = self._conn.cursor()
+            cur.execute(
+                "DELETE FROM dev_days WHERE user_id = ? AND guild_id = ? AND date = ?",
+                (user_id, guild_id, date_kst),
+            )
+            self._conn.commit()
 
     def close(self):
         self._conn.close()

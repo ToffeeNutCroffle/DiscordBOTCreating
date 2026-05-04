@@ -4,7 +4,7 @@ import discord
 from datetime import timezone, timedelta
 from discord import app_commands
 from discord.ext import commands
-from database.db import DatabaseManager, now_utc, to_kst, to_dev_date, dev_day_start_utc
+from database.db import DatabaseManager, now_utc, to_kst, to_dev_date, dev_day_start_utc, month_utc_range
 
 DEV_CATEGORY_NAME = os.getenv("DEV_CATEGORY_NAME", "개발실")
 
@@ -55,7 +55,9 @@ class StatsCog(commands.Cog):
         now = now_utc()
         day_start = dev_day_start_utc(now)
         today_live = max(0, int((now - max(join_time, day_start)).total_seconds()))
-        month_live = max(0, int((now - join_time).total_seconds()))
+        year_month = to_dev_date(now)[:7]
+        month_start, _ = month_utc_range(year_month)
+        month_live = max(0, int((now - max(join_time, month_start)).total_seconds()))
         return today_live, month_live
 
     @app_commands.command(name="개발통계", description="개발 활동 통계를 확인합니다")
@@ -206,6 +208,7 @@ class StatsCog(commands.Cog):
             now = now_utc()
             today_str_rank = to_dev_date(now)
             day_start_utc = dev_day_start_utc(now)
+            month_start, month_end = month_utc_range(year_month)
             rank_dict = {entry["user_id"]: dict(entry) for entry in ranking}
 
             active_uids = list(tracker.active_sessions.keys())
@@ -221,9 +224,9 @@ class StatsCog(commands.Cog):
                 join_time = join_times.get(session_id)
                 if not join_time:
                     continue
-                if to_dev_date(join_time)[:7] != year_month:
+                if join_time >= month_end:
                     continue
-                month_live = max(0, int((now - join_time).total_seconds()))
+                month_live = max(0, int((now - max(join_time, month_start)).total_seconds()))
                 today_live = max(0, int((now - max(join_time, day_start_utc)).total_seconds()))
                 today_total = day_totals.get(uid, 0) + today_live
                 today_already = today_str_rank in dev_dates_map.get(uid, set())
