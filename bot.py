@@ -27,6 +27,7 @@ class DevTrackerBot(commands.Bot):
     async def setup_hook(self):
         await self.load_extension("cogs.tracker")
         await self.load_extension("cogs.stats")
+        await self.load_extension("cogs.confession")
         # 슬래시 커맨드 글로벌 동기화
         await self.tree.sync()
         print("[Bot] Cog 로드 및 커맨드 동기화 완료")
