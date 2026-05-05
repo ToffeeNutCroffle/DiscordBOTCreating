@@ -282,22 +282,22 @@ class StatsCog(commands.Cog):
     async def usage(self, interaction: discord.Interaction):
         embed = discord.Embed(
             title="개발 추적 봇 사용법",
-            description="개발실 음성채팅방 잔류 시간을 자동으로 기록하는 봇입니다.",
+            description="개발실에서 보내신 시간을 소중히 기록해 드리는 봇입니다.",
             color=discord.Color.blurple(),
         )
         embed.add_field(
             name="자동 기록",
             value=(
-                "개발실 카테고리의 음성채널에 입장하면 자동으로 시간 측정이 시작됩니다.\n"
-                "퇴장 시 누적 시간이 자동으로 집계되며, 하루 누적 90분 이상 시 개발일로 인정됩니다.\n"
-                "나갔다가 다시 들어와도 당일 누적 시간이 합산됩니다."
+                "개발실 카테고리 음성채널에 입장하시면 자동으로 시간 측정이 시작됩니다.\n"
+                "퇴장 시 누적 시간이 집계되며, 하루 90분 이상 개발하신 날은 개발일로 인정해 드립니다.\n"
+                "나갔다가 다시 오셔도 당일 누적 시간은 합산됩니다."
             ),
             inline=False,
         )
         embed.add_field(
             name="/개발통계 [@유저]",
             value=(
-                "본인 또는 특정 유저의 개발 통계를 확인합니다.\n"
+                "본인 또는 특정 분의 개발 통계를 확인하실 수 있습니다.\n"
                 "• `@유저` 생략 시 본인 통계\n"
                 "• 연속 개발일 / 최고기록\n"
                 "• 이번 달 개발일 / 개발시간\n"
@@ -308,7 +308,7 @@ class StatsCog(commands.Cog):
         embed.add_field(
             name="/개발달력 [@유저] [연월]",
             value=(
-                "월별 개발 달력을 확인합니다.\n"
+                "월별 개발 달력을 확인하실 수 있습니다.\n"
                 "• `@유저` 생략 시 본인 달력\n"
                 "• `연월` 예시: `2025-03` (생략 시 이번 달)"
             ),
@@ -317,9 +317,18 @@ class StatsCog(commands.Cog):
         embed.add_field(
             name="/개발랭킹",
             value=(
-                "이번 달 서버 TOP 5 랭킹을 확인합니다.\n"
+                "이번 달 서버 TOP 5 랭킹을 확인하실 수 있습니다.\n"
                 "• 시간 랭킹: 이번 달 총 개발 시간 기준\n"
                 "• 일수 랭킹: 이번 달 개발일 수 기준"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="/고해성사",
+            value=(
+                "오늘 개발 기록에서 시간을 차감해 드립니다.\n"
+                "• 음성채널 미접속 상태에서만 사용 가능\n"
+                "• 차감 후 오늘 누적 시간이 90분 미만이 되면 개발일에서 제외됩니다"
             ),
             inline=False,
         )

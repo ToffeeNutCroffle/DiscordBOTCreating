@@ -9,18 +9,50 @@ DEV_CATEGORY_NAME = os.getenv("DEV_CATEGORY_NAME", "개발실")
 
 INTRO_MESSAGES = [
     "어머, 오늘 힘드셨나요? 저에게 다 털어놓으셔도 괜찮아요. 천천히 말씀해 주세요.",
+    "오셨군요. 무슨 일이 있었는지 저한테만 살짝 말씀해 주세요.",
+    "표정이 좋지 않으시네요. 오늘 어떤 하루를 보내셨나요?",
 ]
 
 REACTION_MESSAGES = [
     "그랬군요... 많이 힘드셨겠어요. 후회하고 계신다는 것 자체가 이미 용기 있는 일이에요.\n그럼 오늘 기록에서 얼마나 지워드릴까요?",
+    "말씀해 주셔서 고마워요. 털어놓고 나니 조금 나아지셨나요?\n얼마나 지워드릴까요?",
+    "네, 다 들었어요. 그 마음, 충분히 이해해요.\n오늘 기록에서 얼마를 지워드릴까요?",
 ]
 
 FORGIVE_MESSAGES = [
     "{time}을 용서해드렸어요. 이제 조금 홀가분해지셨으면 좋겠어요. 내일은 더 잘 하실 수 있을 거예요!",
+    "{time}, 없었던 일로 해드렸어요. 다음엔 조금 더 잘 하실 수 있을 거라 믿어요.",
+    "네, {time}을 지워드렸어요. 오늘 하루 고생 많으셨어요.",
 ]
 
 FULL_FORGIVE_MESSAGES = [
     "오늘 기록이 전부 지워졌어요. 새로운 내일이 기다리고 있을 거에요!",
+]
+
+NEGATIVE_INPUT_MESSAGES = [
+    "지금 뭐 하시는 거예요? 음수를 입력하면 시간이 **늘어난다고** 생각하신 건가요? 그 발상이 이미 문제입니다.",
+    "고해성사가 뭔지 아세요? 죄를 **고백**하는 거예요. 시간을 **늘리러** 온 게 아니라고요.",
+    "마이너스요? 지금 저 가지고 장난치세요?",
+    "혹시 수학을 잘 못하시나요? 아니면 저를 우습게 보시는 건가요? 둘 다인가요?",
+    "개발을 늘리고 싶으면 직접 하세요. 지금 저한테 이러시면 안 되죠.",
+]
+
+ZERO_INPUT_MESSAGES = [
+    "0분이요... 지우고 싶은 게 없으시면 그냥 나가시면 돼요.",
+    "0분을 지워달라고요? 저도 할 일이 있답니다.",
+    "아무것도 안 지우시려면 처음부터 오시지 그러셨어요.",
+]
+
+FLOAT_INPUT_MESSAGES = [
+    "{value}분은 저도 어떻게 해드리기가 좀 애매해요. 분 단위 정수로 입력해주세요.",
+    "소수점은 받지 않아요. {value}분이면 그냥 {rounded}분으로 주시면 돼요!",
+    "{value}분... 세심하시네요. 딱 떨어지는 숫자로 다시 입력해주실 수 있을까요?",
+]
+
+INVALID_INPUT_MESSAGES = [
+    "숫자를 입력해주셔야 해요. 몇 분을 지워드릴까요?",
+    "죄송해요, 잘 못 알아들었어요. 숫자로 다시 말씀해 주시겠어요?",
+    "분 단위 숫자로 입력해주세요. 예를 들면 30 이런 식으로요.",
 ]
 
 
@@ -90,13 +122,36 @@ class TimeModal(discord.ui.Modal, title="차감 시간 입력"):
         user_id = str(interaction.user.id)
         guild_id = str(interaction.guild_id)
 
+        raw = self.minutes.value.strip()
         try:
-            mins = int(self.minutes.value)
-            if mins <= 0:
-                raise ValueError
+            float_val = float(raw)
         except ValueError:
             await interaction.response.send_message(
-                "올바른 숫자를 입력해주세요.", ephemeral=True
+                random.choice(INVALID_INPUT_MESSAGES),
+                view=TimeButtonView(self.cog),
+                ephemeral=True,
+            )
+            return
+
+        if float_val < 0:
+            await interaction.response.send_message(
+                random.choice(NEGATIVE_INPUT_MESSAGES), ephemeral=True
+            )
+            return
+
+        mins = int(float_val)
+
+        if float_val != mins:
+            await interaction.response.send_message(
+                random.choice(FLOAT_INPUT_MESSAGES).format(value=raw, rounded=round(float_val)),
+                view=TimeButtonView(self.cog),
+                ephemeral=True,
+            )
+            return
+
+        if mins == 0:
+            await interaction.response.send_message(
+                random.choice(ZERO_INPUT_MESSAGES), ephemeral=True
             )
             return
 
