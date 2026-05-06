@@ -100,7 +100,18 @@ class ConfessModal(discord.ui.Modal, title="고해성사"):
 
     async def on_submit(self, interaction: discord.Interaction):
         user_id = str(interaction.user.id)
+        guild_id = str(interaction.guild_id)
         self.cog.pending_confessions[user_id] = self.confession.value
+
+        today_str = to_dev_date(now_utc())
+        self.cog.db.save_confession(
+            user_id=user_id,
+            username=interaction.user.display_name,
+            guild_id=guild_id,
+            date=today_str,
+            content=self.confession.value,
+        )
+
         reaction = random.choice(REACTION_MESSAGES)
         view = TimeButtonView(self.cog)
         await interaction.response.send_message(reaction, view=view, ephemeral=True)
@@ -233,6 +244,7 @@ class ConfessionCog(commands.Cog):
         intro = random.choice(INTRO_MESSAGES)
         view = ConfessButtonView(self)
         await interaction.response.send_message(intro, view=view, ephemeral=True)
+
 
 
 async def setup(bot: commands.Bot):

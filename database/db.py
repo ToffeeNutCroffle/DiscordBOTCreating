@@ -75,12 +75,24 @@ class DatabaseManager:
                     UNIQUE(user_id, guild_id, date)
                 );
 
+                CREATE TABLE IF NOT EXISTS confessions (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id     TEXT    NOT NULL,
+                    username    TEXT    NOT NULL,
+                    guild_id    TEXT    NOT NULL,
+                    date        TEXT    NOT NULL,
+                    content     TEXT    NOT NULL,
+                    created_at  TEXT    NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_sessions_guild_join
                     ON sessions (guild_id, join_time);
                 CREATE INDEX IF NOT EXISTS idx_sessions_user_guild
                     ON sessions (user_id, guild_id, join_time);
                 CREATE INDEX IF NOT EXISTS idx_dev_days_user_guild
                     ON dev_days (user_id, guild_id, date);
+                CREATE INDEX IF NOT EXISTS idx_confessions_guild_date
+                    ON confessions (guild_id, date);
             """)
             self._conn.commit()
 
@@ -470,6 +482,34 @@ class DatabaseManager:
                 (user_id, guild_id, date_kst),
             )
             self._conn.commit()
+
+    # ── 고해성사 관련 ───────────────────────────────────────
+
+    def save_confession(self, user_id: str, username: str, guild_id: str, date: str, content: str):
+        """고해 내용 저장."""
+        with self._lock:
+            cur = self._conn.cursor()
+            cur.execute(
+                "INSERT INTO confessions (user_id, username, guild_id, date, content, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (user_id, username, guild_id, date, content, utc_str(now_utc())),
+            )
+            self._conn.commit()
+
+    def get_confessions(self, guild_id: str, date: str | None = None) -> list[dict]:
+        """고해 내용 조회. date가 None이면 전체 반환."""
+        with self._lock:
+            cur = self._conn.cursor()
+            if date:
+                cur.execute(
+                    "SELECT username, date, content, created_at FROM confessions WHERE guild_id = ? AND date = ? ORDER BY created_at ASC",
+                    (guild_id, date),
+                )
+            else:
+                cur.execute(
+                    "SELECT username, date, content, created_at FROM confessions WHERE guild_id = ? ORDER BY created_at DESC",
+                    (guild_id,),
+                )
+            return [{"username": r[0], "date": r[1], "content": r[2], "created_at": r[3]} for r in cur.fetchall()]
 
     def close(self):
         self._conn.close()
