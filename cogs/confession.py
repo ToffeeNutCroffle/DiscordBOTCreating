@@ -1,3 +1,4 @@
+import math
 import os
 import random
 import discord
@@ -53,6 +54,30 @@ INVALID_INPUT_MESSAGES = [
     "숫자를 입력해주셔야 해요. 몇 분을 지워드릴까요?",
     "죄송해요, 잘 못 알아들었어요. 숫자로 다시 말씀해 주시겠어요?",
     "분 단위 숫자로 입력해주세요. 예를 들면 30 이런 식으로요.",
+]
+
+OVERFLOW_INPUT_MESSAGES = [
+    "그 숫자는 너무 커서 저도 감당이 안 돼요. 좀 더 현실적인 숫자로 부탁드려요.",
+    "우주의 나이보다 긴 시간을 지워달라고요? 분 단위 정수로 입력해주세요.",
+    "숫자가 너무 커요. 오늘 하루가 그렇게 길지는 않잖아요.",
+]
+
+NAN_INPUT_MESSAGES = [
+    "그건 숫자가 아니에요. 몇 분을 지워드릴까요?",
+    "NaN... 저도 모르겠는 숫자네요. 다시 입력해주세요.",
+    "계산이 불가능한 값이에요. 분 단위 정수로 입력해주세요.",
+]
+
+NO_RECORD_MESSAGES = [
+    "기록이 없으시면 저도 도와드리기가 어려워요. 오늘 개발 먼저 하고 오시면 기다리고 있을게요.",
+    "오늘 개발 기록이 없네요. 지워드릴 시간이 없답니다. 내일은 꼭 같이 해봐요.",
+    "기록이 없으시면 저도 어떻게 해드리기가 어려워요. 오늘 개발하신 다음에 와주세요.",
+]
+
+VOICE_CHANNEL_MESSAGES = [
+    "열심히 하고 계신 거죠? 다 끝내시고 나서 저한테 오세요. 기다리고 있을게요.",
+    "지금은 개발에 집중하실 시간인 것 같아요. 채널에서 나오신 다음에 천천히 이야기 나눠요.",
+    "음성채널에 계실 땐 저도 기다려드릴게요. 나오시면 언제든 찾아와 주세요.",
 ]
 
 
@@ -144,6 +169,22 @@ class TimeModal(discord.ui.Modal, title="차감 시간 입력"):
             )
             return
 
+        if math.isnan(float_val):
+            await interaction.response.send_message(
+                random.choice(NAN_INPUT_MESSAGES),
+                view=TimeButtonView(self.cog),
+                ephemeral=True,
+            )
+            return
+
+        if math.isinf(float_val):
+            await interaction.response.send_message(
+                random.choice(OVERFLOW_INPUT_MESSAGES),
+                view=TimeButtonView(self.cog),
+                ephemeral=True,
+            )
+            return
+
         if float_val < 0:
             await interaction.response.send_message(
                 random.choice(NEGATIVE_INPUT_MESSAGES), ephemeral=True
@@ -227,7 +268,7 @@ class ConfessionCog(commands.Cog):
             category = member.voice.channel.category
             if category and category.name == DEV_CATEGORY_NAME:
                 await interaction.response.send_message(
-                    "음성채널에 있는 동안은 고해성사를 할 수 없어요. 채널에서 나온 후에 다시 시도해주세요.",
+                    random.choice(VOICE_CHANNEL_MESSAGES),
                     ephemeral=True,
                 )
                 return
@@ -236,7 +277,7 @@ class ConfessionCog(commands.Cog):
         today_secs = self.db.get_day_total_secs(user_id, guild_id, today_str)
         if today_secs == 0:
             await interaction.response.send_message(
-                "오늘 개발 기록이 없어요. 지울 시간이 없답니다.",
+                random.choice(NO_RECORD_MESSAGES),
                 ephemeral=True,
             )
             return
